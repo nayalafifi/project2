@@ -1,8 +1,3 @@
-/*
- * Complete FTP Server Implementation
- * Fulfills CS-UH 3012 Spring 2025 Project 2 requirements
- */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,7 +15,6 @@
 #include <netdb.h>
 
 #define PORT 21
-#define DATA_PORT 20
 #define MAX_CLIENTS 10
 #define BUFFER_SIZE 1024
 
@@ -36,8 +30,7 @@ typedef struct {
 Client clients[MAX_CLIENTS];
 
 void trim(char *str) {
-    str[strcspn(str, "
-")] = 0;
+    str[strcspn(str, "\r\n")] = 0;
 }
 
 void send_response(int sockfd, const char *msg) {
@@ -63,9 +56,13 @@ void parse_port(char *arg, char *ip, int *port) {
     sscanf(arg, "%d,%d,%d,%d,%d,%d", &h1, &h2, &h3, &h4, &p1, &p2);
     sprintf(ip, "%d.%d.%d.%d", h1, h2, h3, h4);
     *port = (p1 * 256) + p2;
+    printf("Port received: %s,%d\n", ip, *port);
 }
 
 void handle_data_connection(Client *client, const char *command, const char *arg) {
+    printf("File okay, beginning data connections\n");
+    printf("Connecting to Client Transfer Socket...\n");
+
     int data_sock = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in client_addr;
     client_addr.sin_family = AF_INET;
@@ -74,34 +71,32 @@ void handle_data_connection(Client *client, const char *command, const char *arg
 
     sleep(1);
     if (connect(data_sock, (struct sockaddr*)&client_addr, sizeof(client_addr)) < 0) {
-        send_response(client->sockfd, "425 Can't open data connection.
-");
+        send_response(client->sockfd, "425 Can't open data connection.\r\n");
         return;
     }
 
+    printf("Connection Successful\n");
+
     if (strcmp(command, "LIST") == 0) {
-        send_response(client->sockfd, "150 Opening data connection.
-");
+        printf("Listing directory\n");
+        send_response(client->sockfd, "150 Opening data connection.\r\n");
         DIR *dir = opendir(client->cwd);
         struct dirent *entry;
         char buffer[BUFFER_SIZE];
         while ((entry = readdir(dir)) != NULL) {
             if (entry->d_type == DT_REG) {
-                snprintf(buffer, sizeof(buffer), "%s
-", entry->d_name);
+                snprintf(buffer, sizeof(buffer), "%s\n", entry->d_name);
                 send(data_sock, buffer, strlen(buffer), 0);
             }
         }
         closedir(dir);
     } else if (strcmp(command, "RETR") == 0) {
-        send_response(client->sockfd, "150 Opening data connection.
-");
+        send_response(client->sockfd, "150 Opening data connection.\r\n");
         char path[1024];
         snprintf(path, sizeof(path), "%s/%s", client->cwd, arg);
         FILE *f = fopen(path, "rb");
         if (!f) {
-            send_response(client->sockfd, "550 File not found.
-");
+            send_response(client->sockfd, "550 File not found.\r\n");
             close(data_sock);
             return;
         }
@@ -112,14 +107,12 @@ void handle_data_connection(Client *client, const char *command, const char *arg
         }
         fclose(f);
     } else if (strcmp(command, "STOR") == 0) {
-        send_response(client->sockfd, "150 Opening data connection.
-");
+        send_response(client->sockfd, "150 Opening data connection.\r\n");
         char path[1024];
         snprintf(path, sizeof(path), "%s/%s", client->cwd, arg);
         FILE *f = fopen(path, "wb");
         if (!f) {
-            send_response(client->sockfd, "550 Cannot write file.
-");
+            send_response(client->sockfd, "550 Cannot write file.\r\n");
             close(data_sock);
             return;
         }
@@ -132,40 +125,40 @@ void handle_data_connection(Client *client, const char *command, const char *arg
     }
 
     close(data_sock);
-    send_response(client->sockfd, "226 Transfer complete.
-");
+    send_response(client->sockfd, "226 Transfer complete.\r\n");
+    printf("226 Transfer complete\n");
 }
 
 void process_command(Client *client, char *cmd_line) {
     char command[BUFFER_SIZE], arg[BUFFER_SIZE];
     memset(arg, 0, sizeof(arg));
-    sscanf(cmd_line, "%s %[^
-]", command, arg);
+    sscanf(cmd_line, "%s %[^\r\n]", command, arg);
 
     if (strcasecmp(command, "USER") == 0) {
         strcpy(client->username, arg);
-        send_response(client->sockfd, "331 Username OK, need password.
-");
+        send_response(client->sockfd, "331 Username OK, need password.\r\n");
+        printf("Successful username verification\n");
     } else if (strcasecmp(command, "PASS") == 0) {
         if (authenticate(client->username, arg)) {
             client->authenticated = 1;
-            send_response(client->sockfd, "230 User logged in, proceed.
-");
+            char user_dir[1024];
+            snprintf(user_dir, sizeof(user_dir), "./%s", client->username);
+            mkdir(user_dir, 0755);
+            chdir(user_dir);
+            getcwd(client->cwd, sizeof(client->cwd));
+            send_response(client->sockfd, "230 User logged in, proceed.\r\n");
+            printf("Successful login\n");
         } else {
-            send_response(client->sockfd, "530 Not logged in.
-");
+            send_response(client->sockfd, "530 Not logged in.\r\n");
         }
     } else if (!client->authenticated) {
-        send_response(client->sockfd, "530 Not logged in.
-");
+        send_response(client->sockfd, "530 Not logged in.\r\n");
     } else if (strcasecmp(command, "PORT") == 0) {
         parse_port(arg, client->client_ip, &client->client_data_port);
-        send_response(client->sockfd, "200 PORT command successful.
-");
+        send_response(client->sockfd, "200 PORT command successful.\r\n");
     } else if (strcasecmp(command, "PWD") == 0) {
         char resp[BUFFER_SIZE];
-        snprintf(resp, sizeof(resp), "257 "%s"
-", client->cwd);
+        snprintf(resp, sizeof(resp), "257 \"%s\"\r\n", client->cwd);
         send_response(client->sockfd, resp);
     } else if (strcasecmp(command, "CWD") == 0) {
         char new_dir[1024];
@@ -173,12 +166,11 @@ void process_command(Client *client, char *cmd_line) {
         if (chdir(new_dir) == 0) {
             getcwd(client->cwd, sizeof(client->cwd));
             char resp[BUFFER_SIZE];
-            snprintf(resp, sizeof(resp), "200 directory changed to %s
-", client->cwd);
+            snprintf(resp, sizeof(resp), "200 directory changed to %s\r\n", client->cwd);
             send_response(client->sockfd, resp);
+            printf("Changing directory to: %s\n", arg);
         } else {
-            send_response(client->sockfd, "550 No such file or directory.
-");
+            send_response(client->sockfd, "550 No such file or directory.\r\n");
         }
     } else if (strcasecmp(command, "RETR") == 0 ||
                strcasecmp(command, "STOR") == 0 ||
@@ -188,13 +180,12 @@ void process_command(Client *client, char *cmd_line) {
             exit(0);
         }
     } else if (strcasecmp(command, "QUIT") == 0) {
-        send_response(client->sockfd, "221 Service closing control connection.
-");
+        send_response(client->sockfd, "221 Service closing control connection.\r\n");
         close(client->sockfd);
         client->sockfd = 0;
+        printf("Closed!\n");
     } else {
-        send_response(client->sockfd, "202 Command not implemented.
-");
+        send_response(client->sockfd, "202 Command not implemented.\r\n");
     }
 }
 
@@ -210,8 +201,7 @@ int main() {
 
     bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr));
     listen(server_fd, 5);
-    printf("FTP Server started on port %d...
-", PORT);
+    printf("FTP Server started on port %d...\n", PORT);
 
     fd_set master_set, read_set;
     FD_ZERO(&master_set);
@@ -235,8 +225,9 @@ int main() {
                             getcwd(clients[j].cwd, sizeof(clients[j].cwd));
                             FD_SET(new_sock, &master_set);
                             if (new_sock > fdmax) fdmax = new_sock;
-                            send_response(new_sock, "220 Service ready for new user.
-");
+                            send_response(new_sock, "220 Service ready for new user.\r\n");
+                            printf("Connection established with user %d\n", j);
+                            printf("Their port: %d\n", ntohs(client_addr.sin_port));
                             break;
                         }
                     }
@@ -250,7 +241,7 @@ int main() {
                             if (clients[j].sockfd == i) clients[j].sockfd = 0;
                         }
                     } else {
-                        buffer[bytes] = ' ';
+                        buffer[bytes] = '\0';
                         trim(buffer);
                         for (int j = 0; j < MAX_CLIENTS; j++) {
                             if (clients[j].sockfd == i) {
