@@ -36,7 +36,8 @@ typedef struct {
 Client clients[MAX_CLIENTS];
 
 void trim(char *str) {
-    str[strcspn(str, "\r\n")] = 0;
+    str[strcspn(str, "
+")] = 0;
 }
 
 void send_response(int sockfd, const char *msg) {
@@ -73,29 +74,34 @@ void handle_data_connection(Client *client, const char *command, const char *arg
 
     sleep(1);
     if (connect(data_sock, (struct sockaddr*)&client_addr, sizeof(client_addr)) < 0) {
-        send_response(client->sockfd, "425 Can't open data connection.\r\n");
+        send_response(client->sockfd, "425 Can't open data connection.
+");
         return;
     }
 
     if (strcmp(command, "LIST") == 0) {
-        send_response(client->sockfd, "150 Opening data connection.\r\n");
+        send_response(client->sockfd, "150 Opening data connection.
+");
         DIR *dir = opendir(client->cwd);
         struct dirent *entry;
         char buffer[BUFFER_SIZE];
         while ((entry = readdir(dir)) != NULL) {
             if (entry->d_type == DT_REG) {
-                snprintf(buffer, sizeof(buffer), "%s\n", entry->d_name);
+                snprintf(buffer, sizeof(buffer), "%s
+", entry->d_name);
                 send(data_sock, buffer, strlen(buffer), 0);
             }
         }
         closedir(dir);
     } else if (strcmp(command, "RETR") == 0) {
-        send_response(client->sockfd, "150 Opening data connection.\r\n");
+        send_response(client->sockfd, "150 Opening data connection.
+");
         char path[1024];
         snprintf(path, sizeof(path), "%s/%s", client->cwd, arg);
         FILE *f = fopen(path, "rb");
         if (!f) {
-            send_response(client->sockfd, "550 File not found.\r\n");
+            send_response(client->sockfd, "550 File not found.
+");
             close(data_sock);
             return;
         }
@@ -106,12 +112,14 @@ void handle_data_connection(Client *client, const char *command, const char *arg
         }
         fclose(f);
     } else if (strcmp(command, "STOR") == 0) {
-        send_response(client->sockfd, "150 Opening data connection.\r\n");
+        send_response(client->sockfd, "150 Opening data connection.
+");
         char path[1024];
         snprintf(path, sizeof(path), "%s/%s", client->cwd, arg);
         FILE *f = fopen(path, "wb");
         if (!f) {
-            send_response(client->sockfd, "550 Cannot write file.\r\n");
+            send_response(client->sockfd, "550 Cannot write file.
+");
             close(data_sock);
             return;
         }
@@ -124,32 +132,40 @@ void handle_data_connection(Client *client, const char *command, const char *arg
     }
 
     close(data_sock);
-    send_response(client->sockfd, "226 Transfer complete.\r\n");
+    send_response(client->sockfd, "226 Transfer complete.
+");
 }
 
 void process_command(Client *client, char *cmd_line) {
     char command[BUFFER_SIZE], arg[BUFFER_SIZE];
     memset(arg, 0, sizeof(arg));
-    sscanf(cmd_line, "%s %[^\r\n]", command, arg);
+    sscanf(cmd_line, "%s %[^
+]", command, arg);
 
     if (strcasecmp(command, "USER") == 0) {
         strcpy(client->username, arg);
-        send_response(client->sockfd, "331 Username OK, need password.\r\n");
+        send_response(client->sockfd, "331 Username OK, need password.
+");
     } else if (strcasecmp(command, "PASS") == 0) {
         if (authenticate(client->username, arg)) {
             client->authenticated = 1;
-            send_response(client->sockfd, "230 User logged in, proceed.\r\n");
+            send_response(client->sockfd, "230 User logged in, proceed.
+");
         } else {
-            send_response(client->sockfd, "530 Not logged in.\r\n");
+            send_response(client->sockfd, "530 Not logged in.
+");
         }
     } else if (!client->authenticated) {
-        send_response(client->sockfd, "530 Not logged in.\r\n");
+        send_response(client->sockfd, "530 Not logged in.
+");
     } else if (strcasecmp(command, "PORT") == 0) {
         parse_port(arg, client->client_ip, &client->client_data_port);
-        send_response(client->sockfd, "200 PORT command successful.\r\n");
+        send_response(client->sockfd, "200 PORT command successful.
+");
     } else if (strcasecmp(command, "PWD") == 0) {
         char resp[BUFFER_SIZE];
-        snprintf(resp, sizeof(resp), "257 \"%s\"\r\n", client->cwd);
+        snprintf(resp, sizeof(resp), "257 "%s"
+", client->cwd);
         send_response(client->sockfd, resp);
     } else if (strcasecmp(command, "CWD") == 0) {
         char new_dir[1024];
@@ -157,10 +173,12 @@ void process_command(Client *client, char *cmd_line) {
         if (chdir(new_dir) == 0) {
             getcwd(client->cwd, sizeof(client->cwd));
             char resp[BUFFER_SIZE];
-            snprintf(resp, sizeof(resp), "200 directory changed to %s\r\n", client->cwd);
+            snprintf(resp, sizeof(resp), "200 directory changed to %s
+", client->cwd);
             send_response(client->sockfd, resp);
         } else {
-            send_response(client->sockfd, "550 No such file or directory.\r\n");
+            send_response(client->sockfd, "550 No such file or directory.
+");
         }
     } else if (strcasecmp(command, "RETR") == 0 ||
                strcasecmp(command, "STOR") == 0 ||
@@ -170,11 +188,13 @@ void process_command(Client *client, char *cmd_line) {
             exit(0);
         }
     } else if (strcasecmp(command, "QUIT") == 0) {
-        send_response(client->sockfd, "221 Service closing control connection.\r\n");
+        send_response(client->sockfd, "221 Service closing control connection.
+");
         close(client->sockfd);
         client->sockfd = 0;
     } else {
-        send_response(client->sockfd, "202 Command not implemented.\r\n");
+        send_response(client->sockfd, "202 Command not implemented.
+");
     }
 }
 
@@ -190,7 +210,8 @@ int main() {
 
     bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr));
     listen(server_fd, 5);
-    printf("FTP Server started on port %d...\n", PORT);
+    printf("FTP Server started on port %d...
+", PORT);
 
     fd_set master_set, read_set;
     FD_ZERO(&master_set);
@@ -214,7 +235,8 @@ int main() {
                             getcwd(clients[j].cwd, sizeof(clients[j].cwd));
                             FD_SET(new_sock, &master_set);
                             if (new_sock > fdmax) fdmax = new_sock;
-                            send_response(new_sock, "220 Service ready for new user.\r\n");
+                            send_response(new_sock, "220 Service ready for new user.
+");
                             break;
                         }
                     }
@@ -228,19 +250,4 @@ int main() {
                             if (clients[j].sockfd == i) clients[j].sockfd = 0;
                         }
                     } else {
-                        buffer[bytes] = '\0';
-                        trim(buffer);
-                        for (int j = 0; j < MAX_CLIENTS; j++) {
-                            if (clients[j].sockfd == i) {
-                                process_command(&clients[j], buffer);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    return 0;
-}
+                        buffer[bytes] = '
